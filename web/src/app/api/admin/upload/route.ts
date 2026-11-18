@@ -97,6 +97,7 @@ export async function GET() {
     SELECT
       (SELECT count(*)::int FROM items) AS items,
       (SELECT count(*)::int FROM suppliers) AS suppliers,
+      (SELECT count(*)::int FROM plants) AS plants,
       (SELECT count(*)::int FROM po_history) AS po_history,
       (SELECT count(*)::int FROM contracts) AS contracts,
       (SELECT count(*)::int FROM contract_lines) AS contract_lines,

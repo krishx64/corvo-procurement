@@ -21,6 +21,7 @@ const items = [
   { item_code: 'ITM-1040', description: 'Hydraulic pump seal kit (Hydrax)', uom: 'SET', category: 'Hydraulics & Pneumatics', item_type: 'Material', standard_price: 18500 },
   { item_code: 'ITM-1044', description: 'VCI bag 600x900', uom: 'NOS', category: 'Packaging', item_type: 'Material', standard_price: 21 },
   { item_code: 'ITM-1048', description: 'Nitrile coated gloves', uom: 'PAIR', category: 'Safety & PPE', item_type: 'Material', standard_price: 95 },
+  { item_code: 'ITM-1049', description: 'Safety helmet ISI', uom: 'NOS', category: 'Safety & PPE', item_type: 'Material', standard_price: 210 },
   { item_code: 'ITM-1050', description: 'Safety goggles clear', uom: 'NOS', category: 'Safety & PPE', item_type: 'Material', standard_price: 120 },
   { item_code: 'ITM-1057', description: '24 inch monitor', uom: 'NOS', category: 'Office & IT', item_type: 'Material', standard_price: 11500 },
   { item_code: 'ITM-1066', description: 'CMM calibration service', uom: 'JOB', category: 'Testing & Calibration', item_type: 'Service', standard_price: 65000 },
@@ -62,5 +63,11 @@ describe('matchItem', () => {
 
   it('scores exact descriptions 1.0', () => {
     expect(matchItem('Nitrile coated gloves', items).score).toBeCloseTo(1, 5);
+  });
+
+  it('handles plurals the way requesters type them', () => {
+    expect(codeFor('safety helmets')).toBe('ITM-1049');
+    expect(codeFor('nitrile gloves')).toBe('ITM-1048');
+    expect(codeFor('vci bags 600x900')).toBe('ITM-1044');
   });
 });

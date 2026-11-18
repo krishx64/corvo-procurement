@@ -20,7 +20,7 @@ interface Requirement {
 interface RunRow { id: number; batch_name: string; created_at: string; created_by: string; policy_versions: string; requirement_count: number; po_count: number; stats: Record<string, number> }
 interface RunDetail { run: any; requirements: Requirement[]; pos: any[]; rows: any[] }
 
-const ROUTE_FILTERS = ['ALL', 'PO', 'SOURCING', 'PENDING', 'CONTRACT_PO', 'SPOT_PO', 'EMERGENCY_PO', 'RFQ', 'RFP', 'CAPEX_SOURCING', 'NEW_ITEM_SOURCING'];
+const FILTERS = ['ALL', 'PENDING', 'PO', 'SOURCING', 'CONTRACT_PO', 'SPOT_PO', 'EMERGENCY_PO', 'RFQ', 'RFP', 'CAPEX_SOURCING', 'NEW_ITEM_SOURCING'];
 
 export default function BuyerPage() {
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -99,7 +99,6 @@ export default function BuyerPage() {
         setOverrideComment('');
         setOverrideSupplier('');
       }
-      setRunId((x) => x);
       const d = await api<RunDetail>(`/api/runs/${runId}`);
       setDetail(d);
     } catch (e) {
@@ -109,14 +108,26 @@ export default function BuyerPage() {
 
   const stats = detail ? (detail.run.stats as Record<string, number>) : {};
   const pending = requirements.filter((r) => r.status === 'PENDING').length;
+  const sourcing = (stats.RFQ ?? 0) + (stats.RFP ?? 0) + (stats.CAPEX_SOURCING ?? 0) + (stats.NEW_ITEM_SOURCING ?? 0);
 
   return (
     <div>
       <PageHeader
         title="Buyer workspace"
-        subtitle="Every requirement, its decision and the clause behind it. Approve as-is or override with a written reason — both are audited."
+        subtitle="Every requirement with its decision and the clause behind it. Approve as awarded, or override with a written reason — both are recorded."
+        meta={
+          detail ? (
+            <>
+              <span>Run #{detail.run.id}</span>
+              <span className="text-rule-dark">/</span>
+              <span>{detail.run.batch_name}</span>
+              <span className="text-rule-dark">/</span>
+              <span>Policy {detail.run.policy_versions || '—'}</span>
+            </>
+          ) : null
+        }
         actions={
-          <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={runId ?? ''} onChange={(e) => setRunId(Number(e.target.value))}>
+          <select className={`${inputCls} w-64`} value={runId ?? ''} onChange={(e) => setRunId(Number(e.target.value))}>
             {runs.map((r) => (
               <option key={r.id} value={r.id}>Run #{r.id} · {r.batch_name} · {new Date(r.created_at).toLocaleString()}</option>
             ))}
@@ -124,111 +135,142 @@ export default function BuyerPage() {
         }
       />
 
-      <div className="px-8 py-6">
-        {busy ? <Spinner label="Loading decisions…" /> : error ? <Alert>{error}</Alert> : !detail ? (
-          <Empty title="No runs yet" hint="Upload and process a PR batch in Data & runs, or create a request through chat." />
+      <div className="px-4 py-5 lg:px-8">
+        {busy ? <Spinner label="Loading decisions" /> : error ? <Alert>{error}</Alert> : !detail ? (
+          <Empty title="No runs yet" hint="Upload and process a PR batch in Data & runs, or raise a requisition in Request intake." />
         ) : (
           <>
-            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5">
-              <Card className="px-4 py-3"><p className="text-[11px] uppercase tracking-wider text-slate-500">Requirements</p><p className="mt-1 text-lg font-semibold">{requirements.length}</p></Card>
-              <Card className="px-4 py-3"><p className="text-[11px] uppercase tracking-wider text-slate-500">Purchase orders</p><p className="mt-1 text-lg font-semibold">{detail.pos.length}</p></Card>
-              <Card className="px-4 py-3"><p className="text-[11px] uppercase tracking-wider text-slate-500">Sourcing</p><p className="mt-1 text-lg font-semibold">{(stats.RFQ ?? 0) + (stats.RFP ?? 0) + (stats.CAPEX_SOURCING ?? 0) + (stats.NEW_ITEM_SOURCING ?? 0)}</p></Card>
-              <Card className="px-4 py-3"><p className="text-[11px] uppercase tracking-wider text-slate-500">Awaiting buyer</p><p className="mt-1 text-lg font-semibold">{pending}</p></Card>
-              <Card className="px-4 py-3"><p className="text-[11px] uppercase tracking-wider text-slate-500">Policy</p><p className="mt-1 text-lg font-semibold">{detail.run.policy_versions || '—'}</p></Card>
+            <div className="mb-4 grid grid-cols-2 divide-rule border border-rule bg-panel sm:grid-cols-3 md:grid-cols-5 md:divide-x">
+              {[
+                ['Requirements', requirements.length],
+                ['Purchase orders', detail.pos.length],
+                ['Sourcing events', sourcing],
+                ['Awaiting buyer', pending],
+                ['Policy', detail.run.policy_versions || '—'],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="px-4 py-3">
+                  <p className="mono text-[9px] uppercase tracking-[0.1em] text-steel">{label}</p>
+                  <p className="mono mt-1 text-[16px] font-medium leading-none text-ink">{value as number | string}</p>
+                </div>
+              ))}
             </div>
 
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <input className="w-64 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder="Search group, item, PR…" value={query} onChange={(e) => setQuery(e.target.value)} />
-              <div className="flex flex-wrap gap-1">
-                {ROUTE_FILTERS.map((f) => (
-                  <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-2.5 py-1 text-xs font-medium ${filter === f ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'}`}>
+              <input className={`${inputCls} w-56`} placeholder="Find group, item or PR…" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <div className="flex flex-wrap items-center gap-1">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`mono border px-2 py-1 text-[9.5px] uppercase tracking-[0.06em] transition ${
+                      filter === f ? 'border-ink bg-ink text-paper' : 'border-rule-dark bg-panel text-steel hover:border-draft hover:text-draft'
+                    }`}
+                  >
                     {f === 'ALL' ? 'All' : f === 'PO' ? 'POs' : f === 'SOURCING' ? 'Sourcing' : f === 'PENDING' ? 'Pending' : routeLabel(f)}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px_1fr]">
-              <Card className="scroll-thin max-h-[calc(100vh-20rem)] overflow-y-auto">
-                {filtered.length === 0 ? <p className="p-6 text-sm text-slate-500">No requirements match this filter.</p> : (
-                  <ul className="divide-y divide-slate-100">
-                    {filtered.map((r) => (
-                      <li key={r.id}>
-                        <button onClick={() => { setSelectedId(r.id); setOverrideOpen(false); }} className={`w-full px-4 py-3 text-left transition ${selected?.id === r.id ? 'bg-slate-50' : 'hover:bg-slate-50/60'}`}>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-slate-500">{r.group_id}</span>
-                            <Badge tone={r.status}>{r.status.charAt(0) + r.status.slice(1).toLowerCase()}</Badge>
-                          </div>
-                          <p className="mt-1 truncate text-sm font-medium text-slate-900">{r.item_description ?? r.item_code}</p>
-                          <div className="mt-1 flex items-center gap-2">
-                            <Badge tone={r.route}>{routeLabel(r.route)}</Badge>
-                            <span className="text-xs text-slate-500">{r.plant} · {fmtInr(r.value)}</span>
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[400px_minmax(0,1fr)]">
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-rule px-3.5 py-2.5">
+                  <span className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Requirements · {filtered.length}</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.1em] text-steel">{pending} open</span>
+                </div>
+                <div className="scroll-thin max-h-[calc(100vh-22rem)] overflow-y-auto">
+                  {filtered.length === 0 ? <p className="px-4 py-6 text-[12.5px] text-steel">Nothing matches this filter.</p> : (
+                    <ul className="divide-y divide-rule">
+                      {filtered.map((r) => (
+                        <li key={r.id}>
+                          <button
+                            onClick={() => { setSelectedId(r.id); setOverrideOpen(false); setActionError(null); }}
+                            className={`focus-ring w-full border-l-2 px-3.5 py-2.5 text-left transition ${
+                              selected?.id === r.id ? 'border-draft bg-draftsoft/50' : 'border-transparent hover:border-rule-dark hover:bg-[#f5f6f1]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="mono text-[10px] tracking-[0.05em] text-steel">{r.group_id}</span>
+                              <span className="mono text-[10px] text-steel">{r.status === 'PENDING' ? 'OPEN' : r.status}</span>
+                            </div>
+                            <p className="mt-1 truncate text-[12.5px] font-medium text-ink">{r.item_description ?? r.item_code}</p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <Badge tone={r.route}>{routeLabel(r.route)}</Badge>
+                              <span className="mono text-[10px] text-steel">{r.plant}</span>
+                              <span className="mono ml-auto text-[11px] text-graphite">{fmtInr(r.value)}</span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </Card>
 
               {selected ? (
-                <Card className="p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{selected.group_id}</span>
+                <Card className="flex flex-col">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-rule px-5 py-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mono text-[10px] uppercase tracking-[0.1em] text-steel">{selected.group_id}</span>
                         <Badge tone={selected.route}>{routeLabel(selected.route)}</Badge>
                         {selected.is_emergency ? <Badge tone="EMERGENCY_PO">Emergency</Badge> : null}
-                        <Badge tone={selected.status}>{selected.status.charAt(0) + selected.status.slice(1).toLowerCase()}</Badge>
+                        <Badge tone={selected.status}>{selected.status === 'PENDING' ? 'Open' : selected.status}</Badge>
                       </div>
-                      <h2 className="mt-2 text-lg font-semibold text-slate-900">{selected.item_description ?? selected.item_code}</h2>
-                      <p className="text-sm text-slate-500">{selected.item_code} · {selected.plant} · need by {selected.need_by_date}</p>
+                      <h2 className="mt-1.5 text-[19px] font-semibold leading-tight tracking-[-0.01em] text-ink">{selected.item_description ?? selected.item_code}</h2>
+                      <p className="mono mt-1 text-[10.5px] uppercase tracking-[0.06em] text-steel">
+                        {selected.item_code} · {selected.plant} · need by {selected.need_by_date} · {fmtQty(selected.total_qty)} units
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-[11px] uppercase tracking-wider text-slate-500">Requirement value</p>
-                      <p className="text-xl font-semibold text-slate-900">{fmtInr(selected.value)}</p>
-                      <p className="text-xs text-slate-500">{fmtQty(selected.total_qty)} units</p>
+                    <div className="border border-rule bg-[#f6f7f2] px-3.5 py-2 text-right">
+                      <p className="mono text-[9px] uppercase tracking-[0.1em] text-steel">Requirement value</p>
+                      <p className="mono mt-1 text-[18px] font-medium leading-none text-ink">{fmtInr(selected.value)}</p>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Decision</p>
+                  <div className="grid grid-cols-1 gap-0 border-b border-rule md:grid-cols-2 md:divide-x md:divide-rule">
+                    <div className="px-5 py-4">
+                      <p className="mono text-[9px] uppercase tracking-[0.1em] text-steel">Award</p>
                       {selected.decision === 'PO' ? (
-                        <p className="mt-1 text-sm text-slate-800">
-                          {selected.supplier_id} at {fmtInr(selected.unit_price)} · PO <span className="font-medium">{selected.po_id}</span>
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-ink">
+                          <span className="mono font-medium">{selected.supplier_id}</span> at <span className="mono">{fmtInr(selected.unit_price)}</span> · PO <span className="mono">{selected.po_id}</span>
                         </p>
                       ) : (
-                        <p className="mt-1 text-sm text-slate-800">
-                          Sourcing request{selected.suggested_supplier_ids ? ` · suggested ${selected.suggested_supplier_ids.split(';').join(', ')}` : ' · no suggestions (new item)'}
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-ink">
+                          {selected.suggested_supplier_ids ? <>Suggested suppliers · <span className="mono">{selected.suggested_supplier_ids.split(';').join(' · ')}</span></> : 'No supplier suggestions — new item, buyer to source.'}
                         </p>
                       )}
-                      <p className="mt-1 text-xs text-slate-500">Policy {selected.policy_version} · rule {selected.rule_id}{selected.contract_id ? ` · contract ${selected.contract_id}` : selected.ref_po_number ? ` · ref PO ${selected.ref_po_number}` : ''}</p>
+                      <p className="mono mt-2 text-[10px] uppercase tracking-[0.06em] text-steel">
+                        Policy {selected.policy_version} · clause {selected.rule_id}{selected.contract_id ? ` · ${selected.contract_id}` : selected.ref_po_number ? ` · ref PO ${selected.ref_po_number}` : ''}
+                      </p>
                     </div>
-                    <div className="rounded-lg border border-slate-200 p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Why</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-600">{selected.reason}</p>
+                    <div className="px-5 py-4">
+                      <p className="mono text-[9px] uppercase tracking-[0.1em] text-steel">Policy basis</p>
+                      <p className="mt-1.5 text-[12px] leading-relaxed text-graphite">{selected.reason}</p>
                     </div>
                   </div>
 
-                  <div className="mt-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">PR lines in this requirement ({selected.lines.length})</p>
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="w-full text-sm">
+                  <div className="px-5 py-4">
+                    <div className="flex items-baseline justify-between">
+                      <p className="mono text-[9px] uppercase tracking-[0.1em] text-steel">PR lines in this requirement</p>
+                      <span className="mono text-[10px] text-steel">{selected.lines.length}</span>
+                    </div>
+                    <div className="mt-2 overflow-x-auto border border-rule">
+                      <table className="ledger">
                         <thead>
-                          <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wider text-slate-500">
-                            <th className="py-1.5 pr-3">PR</th><th className="py-1.5 pr-3">Created</th><th className="py-1.5 pr-3">Requester</th><th className="py-1.5 pr-3">Qty</th><th className="py-1.5 pr-3">Need by</th><th className="py-1.5">Urgency</th>
+                          <tr>
+                            <th>PR</th><th>Created</th><th>Requester</th><th>Quantity</th><th>Need by</th><th>Urgency</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selected.lines.map((l) => (
-                            <tr key={`${l.pr_no}/${l.pr_line}`} className="border-b border-slate-100 text-slate-700">
-                              <td className="py-1.5 pr-3 font-medium">{l.pr_no}/{l.pr_line}</td>
-                              <td className="py-1.5 pr-3 whitespace-nowrap">{String(l.created_at).replace('T', ' ').slice(0, 16)}</td>
-                              <td className="py-1.5 pr-3">{l.requester ?? '—'}{l.department ? ` · ${l.department}` : ''}</td>
-                              <td className="py-1.5 pr-3">{fmtQty(l.quantity)} {l.uom ?? ''}</td>
-                              <td className="py-1.5 pr-3">{l.need_by_date}</td>
-                              <td className="py-1.5">{l.urgency}</td>
+                            <tr key={`${l.pr_no}/${l.pr_line}`}>
+                              <td className="mono whitespace-nowrap text-[11px] font-medium text-ink">{l.pr_no}/{l.pr_line}</td>
+                              <td className="mono whitespace-nowrap text-[11px] text-graphite">{String(l.created_at).replace('T', ' ').slice(0, 16)}</td>
+                              <td className="text-[12px]">{l.requester ?? '—'}{l.department ? <span className="text-steel"> · {l.department}</span> : null}</td>
+                              <td className="mono text-[11px]">{fmtQty(l.quantity)} {l.uom ?? ''}</td>
+                              <td className="mono text-[11px]">{l.need_by_date}</td>
+                              <td className="mono text-[11px]">{l.urgency}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -237,27 +279,30 @@ export default function BuyerPage() {
                   </div>
 
                   {selected.status === 'OVERRIDDEN' ? (
-                    <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
-                      <p className="font-medium">Overridden to {selected.override_route ? routeLabel(selected.override_route) : '—'}{selected.override_supplier_id ? ` · ${selected.override_supplier_id}` : ''}</p>
-                      <p className="text-xs">“{selected.override_reason}” — {selected.override_by}</p>
+                    <div className="mx-5 mb-4 border border-signal/40 bg-signalsoft px-3.5 py-2.5">
+                      <p className="mono text-[10px] font-medium uppercase tracking-[0.08em] text-signal">
+                        Overridden to {selected.override_route ? routeLabel(selected.override_route) : '—'}{selected.override_supplier_id ? ` · ${selected.override_supplier_id}` : ''}
+                      </p>
+                      <p className="mt-1 text-[12px] text-[#8f3518]">“{selected.override_reason}” — {selected.override_by}</p>
                     </div>
                   ) : null}
 
-                  {actionError ? <div className="mt-3"><Alert>{actionError}</Alert></div> : null}
+                  {actionError ? <div className="mx-5 mb-4"><Alert>{actionError}</Alert></div> : null}
 
                   {selected.status === 'PENDING' ? (
-                    <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
+                    <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-rule bg-[#f7f8f3] px-5 py-3">
                       <button className={btnPrimary} onClick={() => act(selected.id, 'approve')}>
                         {selected.decision === 'PO' ? `Approve ${selected.po_id}` : `Approve ${routeLabel(selected.route)}`}
                       </button>
-                      <button className={btnSecondary} onClick={() => { setOverrideOpen((v) => !v); setOverrideRoute(selected.route); }}>
-                        Override with reason
+                      <button className={btnSecondary} onClick={() => { setOverrideOpen((v) => !v); setOverrideRoute(selected.route); setActionError(null); }}>
+                        Override
                       </button>
+                      <span className="mono ml-auto text-[10px] uppercase tracking-[0.08em] text-steel">Approval writes to the audit trail</span>
                     </div>
                   ) : null}
 
                   {overrideOpen ? (
-                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                    <div className="border-t border-signal/30 bg-signalsoft/40 px-5 py-4">
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         <div>
                           <label className={labelCls}>New route</label>
@@ -273,7 +318,7 @@ export default function BuyerPage() {
                         ) : null}
                       </div>
                       <div className="mt-3">
-                        <label className={labelCls}>Written reason (kept with the original decision)</label>
+                        <label className={labelCls}>Written reason — kept with the original decision</label>
                         <textarea className={inputCls} rows={2} value={overrideComment} onChange={(e) => setOverrideComment(e.target.value)} placeholder="Why are you changing the engine's decision?" />
                       </div>
                       <div className="mt-3 flex gap-2">
@@ -283,7 +328,7 @@ export default function BuyerPage() {
                     </div>
                   ) : null}
                 </Card>
-              ) : <Empty title="Select a requirement" hint="Pick a requirement from the list to see its lines, value and the policy clause behind it." />}
+              ) : <Empty title="Select a requirement" hint="Pick a requirement to see its lines, value and the clause behind the decision." />}
             </div>
           </>
         )}

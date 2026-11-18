@@ -5,6 +5,7 @@ import { ensureSchema, q } from '@/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 /**
  * POST /api/process-batch

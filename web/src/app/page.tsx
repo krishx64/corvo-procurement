@@ -25,9 +25,19 @@ const EXAMPLES = [
   'Drinking water purifier 50 LPH for Pune plant',
 ];
 
+function Wing({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 36 24" className={className} aria-hidden="true">
+      <path d="M2 22 L12 4 L16.5 4 L9 17 Z" fill="currentColor" />
+      <path d="M11 22 L20 6.5 L24.5 6.5 L16.5 20 Z" fill="currentColor" opacity=".7" />
+      <path d="M20 22 L28 9 L33 9 L25.5 22 Z" fill="currentColor" opacity=".45" />
+    </svg>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([
-    { role: 'assistant', content: 'Hi — what do you need to buy? Describe it in your own words and I will raise the purchase request.' },
+    { role: 'assistant', content: 'What do you need to buy? Describe it the way you would tell a colleague — I will match the item, ask for anything missing, and raise the requisition.' },
   ]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -36,7 +46,14 @@ export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [result, setResult] = useState<ConfirmResponse | null>(null);
+  const [policyVersion, setPolicyVersion] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    api<{ active_doc: { version: string } | null }>('/api/policy')
+      .then((r) => setPolicyVersion(r.active_doc?.version ?? ''))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -71,10 +88,7 @@ export default function ChatPage() {
       const res = await api<ConfirmResponse>('/api/chat/confirm', { method: 'POST', body: JSON.stringify({ draft }) });
       setResult(res);
       setReady(false);
-      setMessages((m) => [
-        ...m,
-        { role: 'assistant', content: `Done — I raised ${res.pr_no}. The engine decision is below; the buyer can review it in the workspace.` },
-      ]);
+      setMessages((m) => [...m, { role: 'assistant', content: `Requisition ${res.pr_no} is raised. The policy decision is attached below and queued for the buyer.` }]);
       setDraft(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the PR');
@@ -84,7 +98,7 @@ export default function ChatPage() {
   }
 
   function reset() {
-    setMessages([{ role: 'assistant', content: 'Hi — what do you need to buy? Describe it in your own words and I will raise the purchase request.' }]);
+    setMessages([{ role: 'assistant', content: 'What do you need to buy? Describe it the way you would tell a colleague — I will match the item, ask for anything missing, and raise the requisition.' }]);
     setDraft(null);
     setReady(false);
     setCandidates([]);
@@ -95,105 +109,189 @@ export default function ChatPage() {
   return (
     <div>
       <PageHeader
-        title="New purchase request"
-        subtitle="Chat intake · the assistant matches the item, asks only for what is missing, then runs the procurement policy."
-        actions={<button className={btnSecondary} onClick={reset}>Start over</button>}
+        title="Request intake"
+        subtitle="Raise a purchase requisition in plain language. Item matching, clubbing and the policy decision happen the moment you confirm."
+        meta={
+          <>
+            {policyVersion ? <span>Policy v{policyVersion}</span> : <span>Policy loading</span>}
+            <span className="text-rule-dark">/</span>
+            <span>PUN1 · CHK1</span>
+            <span className="text-rule-dark">/</span>
+            <span>Decisions are live</span>
+          </>
+        }
+        actions={<button className={btnSecondary} onClick={reset}>New session</button>}
       />
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[1fr_320px]">
-        <Card className="flex h-[calc(100vh-11rem)] min-h-[520px] flex-col overflow-hidden">
-          <div ref={scrollRef} className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[78%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.role === 'user' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800'}`}>
-                  {m.content}
+
+      <div className="mx-auto grid max-w-[1240px] grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_296px] lg:px-8">
+        <Card className="flex h-[calc(100vh-12.5rem)] min-h-[560px] flex-col overflow-hidden">
+          <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
+            <span className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Requisition desk</span>
+            <span className="mono text-[10px] uppercase tracking-[0.1em] text-steel">
+              {messages.filter((m) => m.role === 'user').length} {messages.filter((m) => m.role === 'user').length === 1 ? 'entry' : 'entries'}
+            </span>
+          </div>
+
+          <div ref={scrollRef} className="scroll-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            {messages.map((m, i) =>
+              m.role === 'user' ? (
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-[78%] whitespace-pre-line rounded-[3px] bg-ink px-3.5 py-2.5 text-[13px] leading-relaxed text-paper">{m.content}</div>
                 </div>
-              </div>
-            ))}
+              ) : (
+                <div key={i} className="flex items-start gap-3">
+                  <Wing className="mt-1 h-5 w-8 shrink-0 text-draft" />
+                  <div className="max-w-[80%] whitespace-pre-line rounded-[3px] border border-rule bg-white px-3.5 py-2.5 text-[13px] leading-relaxed text-graphite">{m.content}</div>
+                </div>
+              ),
+            )}
+
             {ready && draft ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Ready to raise</p>
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-800">
-                  <span className="text-slate-500">Item</span><span>{draft.item_code ? `${draft.item_description} (${draft.item_code})` : `${draft.item_description ?? draft.item_query} · new item`}</span>
-                  <span className="text-slate-500">Quantity</span><span>{fmtQty(draft.quantity)} {draft.uom ?? ''}</span>
-                  <span className="text-slate-500">Plant</span><span>{draft.plant}</span>
-                  <span className="text-slate-500">Need by</span><span>{draft.need_by_date}{draft.urgency === 'Emergency' ? ' · Emergency' : ''}</span>
-                  {draft.is_new_item ? (<><span className="text-slate-500">Est. unit price</span><span>{fmtInr(draft.estimated_unit_price)}</span></>) : null}
+              <div className="border border-draft/40 bg-draftsoft/60">
+                <div className="flex items-center justify-between border-b border-draft/25 px-3.5 py-2">
+                  <span className="mono text-[10px] font-medium uppercase tracking-[0.1em] text-draft">Requisition slip — check before raising</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.1em] text-draft/70">{draft.urgency === 'Emergency' ? 'Emergency' : 'Normal'}</span>
                 </div>
-                <div className="mt-3 flex gap-2">
-                  <button className={btnPrimary} onClick={confirm} disabled={busy}>Create PR</button>
-                  <button className={btnSecondary} onClick={() => send('Change something')}>Change</button>
+                <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-1.5 px-3.5 py-3 text-[12.5px]">
+                  <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Item</span>
+                  <span className="text-ink">{draft.item_code ? `${draft.item_description} · ${draft.item_code}` : `${draft.item_description ?? draft.item_query} · new item, sourcing`}</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Quantity</span>
+                  <span className="mono text-ink">{fmtQty(draft.quantity)} {draft.uom ?? ''}</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Plant</span>
+                  <span className="text-ink">{draft.plant === 'PUN1' ? 'PUN1 — Bhosari' : draft.plant === 'CHK1' ? 'CHK1 — Chakan' : draft.plant}</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Need by</span>
+                  <span className="mono text-ink">{draft.need_by_date}</span>
+                  {draft.is_new_item ? (
+                    <>
+                      <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Est. price</span>
+                      <span className="mono text-ink">{fmtInr(draft.estimated_unit_price)}</span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2 border-t border-draft/25 px-3.5 py-2.5">
+                  <button className={btnPrimary} onClick={confirm} disabled={busy}>Raise requisition</button>
+                  <button className={btnSecondary} onClick={() => send('Change the details')}>Amend</button>
                 </div>
               </div>
             ) : null}
+
             {result ? (
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{result.pr_no}</span>
+              <div className="border border-rule bg-white">
+                <div className="flex flex-wrap items-center gap-2 border-b border-rule px-3.5 py-2.5">
+                  <span className="mono text-[12px] font-semibold text-ink">{result.pr_no}</span>
                   <Badge tone={result.decision.route}>{routeLabel(result.decision.route)}</Badge>
                   <Badge tone="PENDING">Awaiting buyer</Badge>
-                  <span className="text-xs text-slate-500">policy {result.decision.policy_version}</span>
+                  <span className="mono ml-auto text-[10px] uppercase tracking-[0.08em] text-steel">Policy {result.decision.policy_version}</span>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-slate-800">
-                  <span className="text-slate-500">Requirement</span><span>{result.decision.group_id}</span>
-                  <span className="text-slate-500">Value</span><span>{fmtInr(result.decision.group_value_inr)}</span>
-                  {result.decision.supplier_id ? (<><span className="text-slate-500">Supplier</span><span>{result.decision.supplier_id} @ {fmtInr(result.decision.unit_price)}</span></>) : null}
-                  {result.decision.suggested_supplier_ids ? (<><span className="text-slate-500">Suggested</span><span>{result.decision.suggested_supplier_ids.split(';').join(', ')}</span></>) : null}
-                  {result.decision.po_id ? (<><span className="text-slate-500">PO</span><span>{result.decision.po_id}</span></>) : null}
+                <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-1.5 px-3.5 py-3 text-[12.5px]">
+                  <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Requirement</span>
+                  <span className="mono text-ink">{result.decision.group_id}</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Value</span>
+                  <span className="mono text-ink">{fmtInr(result.decision.group_value_inr)}</span>
+                  {result.decision.supplier_id ? (
+                    <>
+                      <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Supplier</span>
+                      <span className="mono text-ink">{result.decision.supplier_id} @ {fmtInr(result.decision.unit_price)}</span>
+                    </>
+                  ) : null}
+                  {result.decision.suggested_supplier_ids ? (
+                    <>
+                      <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Suggested</span>
+                      <span className="mono text-ink">{result.decision.suggested_supplier_ids.split(';').join(' · ')}</span>
+                    </>
+                  ) : null}
+                  {result.decision.po_id ? (
+                    <>
+                      <span className="mono text-[10px] uppercase tracking-[0.08em] text-steel">PO</span>
+                      <span className="mono text-ink">{result.decision.po_id}</span>
+                    </>
+                  ) : null}
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-500">{result.decision.reason}</p>
+                <div className="border-t border-rule bg-[#f6f7f2] px-3.5 py-2.5">
+                  <p className="mono text-[10px] uppercase tracking-[0.08em] text-steel">Clause applied</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-graphite">{result.decision.reason}</p>
+                </div>
+                <div className="flex items-center gap-3 border-t border-rule px-3.5 py-2.5">
+                  <a className={btnGhostLink} href="/buyer">Open in buyer workspace</a>
+                  <button className={btnGhostLink} onClick={reset}>Raise another</button>
+                </div>
               </div>
             ) : null}
-            {busy ? <Spinner label="Thinking…" /> : null}
+
+            {busy ? <Spinner label="Reading the request" /> : null}
             {error ? <Alert>{error}</Alert> : null}
           </div>
-          <div className="border-t border-slate-200 p-3">
+
+          <div className="border-t border-rule bg-[#f7f8f3] p-3">
             {candidates.length > 0 ? (
-              <div className="mb-2 flex flex-wrap gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="mono text-[9.5px] uppercase tracking-[0.08em] text-steel">Possible matches</span>
                 {candidates.map((c) => (
-                  <button key={c.item_code} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => send(c.item_code)}>
-                    {c.description} · {c.item_code}
+                  <button key={c.item_code} className="focus-ring rounded-[3px] border border-rule-dark bg-white px-2 py-1 text-[11px] text-graphite hover:border-draft hover:text-draft" onClick={() => send(c.item_code)}>
+                    {c.description} <span className="mono text-steel">· {c.item_code}</span>
                   </button>
                 ))}
               </div>
             ) : null}
-            <form
-              onSubmit={(e) => { e.preventDefault(); send(input); }}
-              className="flex items-end gap-2"
-            >
+            <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="flex items-end gap-2">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
                 rows={2}
                 placeholder="e.g. need 200 nitrile gloves for Chakan by next Friday"
-                className="min-h-[44px] flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                className="focus-ring min-h-[44px] flex-1 resize-none rounded-[3px] border border-rule-dark bg-white px-3 py-2 text-[13px] placeholder:text-steel/70 focus:border-draft focus:outline-none"
               />
-              <button type="submit" className={btnPrimary} disabled={busy || !input.trim()}>Send</button>
+              <button type="submit" className={btnPrimary} disabled={busy || !input.trim()}>Log request</button>
             </form>
           </div>
         </Card>
 
         <div className="space-y-4">
-          <Card className="p-4">
-            <p className="text-sm font-semibold text-slate-900">Try an example</p>
-            <div className="mt-3 space-y-2">
+          <Card>
+            <div className="border-b border-rule px-4 py-2.5">
+              <p className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Intake protocol</p>
+            </div>
+            <ol className="divide-y divide-rule">
+              {[
+                ['Describe', 'Item, quantity, plant, date — in any order.'],
+                ['Verify', 'The assistant asks only for what is missing and shows a slip.'],
+                ['Decide', 'Policy runs immediately and the buyer sees the docket.'],
+              ].map(([title, body], i) => (
+                <li key={title} className="flex gap-3 px-4 py-3">
+                  <span className="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border border-rule-dark text-[10px] text-graphite">{i + 1}</span>
+                  <span>
+                    <span className="block text-[12.5px] font-medium text-ink">{title}</span>
+                    <span className="mt-0.5 block text-[11.5px] leading-relaxed text-steel">{body}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+
+          <Card>
+            <div className="border-b border-rule px-4 py-2.5">
+              <p className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Try a request</p>
+            </div>
+            <div className="divide-y divide-rule">
               {EXAMPLES.map((e) => (
-                <button key={e} onClick={() => send(e)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs text-slate-700 hover:border-slate-300 hover:bg-white">
+                <button key={e} onClick={() => send(e)} className="block w-full px-4 py-2.5 text-left text-[12px] leading-relaxed text-graphite hover:bg-draftsoft/50 hover:text-draft">
                   “{e}”
                 </button>
               ))}
             </div>
           </Card>
-          <Card className="p-4 text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">How it decides</p>
-            <p className="mt-2 leading-relaxed">
-              The assistant fills quantity, plant and need-by — then the policy engine clubs the line into a requirement and picks
-              a contract PO, spot PO, emergency PO, RFQ, RFP or capex sourcing. Unknown items become new-item sourcing.
+
+          <div className="border border-rule bg-panel/60 px-4 py-3">
+            <p className="mono text-[9.5px] uppercase tracking-[0.1em] text-steel">Unknown items</p>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-steel">
+              If the description does not exist in the item master, the assistant says so and asks for an estimated price. It never invents a catalogue item.
             </p>
-            <p className="mt-3 text-xs text-slate-500">Need a whole batch? Upload a PR CSV in Data &amp; runs.</p>
-          </Card>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+const btnGhostLink = 'mono text-[10px] font-medium uppercase tracking-[0.08em] text-graphite underline decoration-rule-dark decoration-1 underline-offset-4 hover:text-draft hover:decoration-draft';

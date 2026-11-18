@@ -2,7 +2,7 @@
 
 Chat-first purchase requests for Corvo Engineering, with a **policy-as-data** decision engine: every PR line is matched, clubbed into requirements, valued against contracts/PO history, and routed to a **purchase order** (contract, emergency or spot) or a **sourcing event** (RFQ, RFP, capex, new item) by the version of the procurement policy in force on the requirement date.
 
-- **Hosted app:** _filled in after deploy_
+- **Hosted app:** https://corvo-procurement-kappa.vercel.app
 - **Design / decisions:** [`DECISIONS.md`](DECISIONS.md) (judgment calls) · [`APPROACH.md`](APPROACH.md) (tools + architecture)
 - **Design doc / plan:** `docs/superpowers/specs/` and `docs/superpowers/plans/`
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api, fmtInr } from '@/lib/client';
 import { Alert, Badge, btnPrimary, btnSecondary, Card, Empty, inputCls, labelCls, PageHeader, Spinner } from '@/components/ui';
 
@@ -12,6 +12,7 @@ interface ContractLine { contract_id: string; item_code: string; description: st
 interface DraftLine { item_code: string; description: string; uom: string; rate: string }
 
 const emptyLine = (): DraftLine => ({ item_code: '', description: '', uom: 'NOS', rate: '' });
+const todayIst = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
 
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -20,10 +21,10 @@ export default function ContractsPage() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ contract_id: '', supplier_id: '', start_date: '', end_date: '', value_cap: '', consumed_value: '0' });
+  const [form, setForm] = useState({ contract_id: '', supplier_id: '', start_date: todayIst(), end_date: '', value_cap: '', consumed_value: '0' });
   const [draftLines, setDraftLines] = useState<DraftLine[]>([emptyLine()]);
   const [extractBusy, setExtractBusy] = useState(false);
-  const [extractNote, setExtractNote] = useState<string | null>(null);
+  const [extractNote, setExtractNote] = useState<{ tone: 'info' | 'error'; text: string } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   async function load() {
@@ -51,7 +52,7 @@ export default function ContractsPage() {
       setForm({
         contract_id: d.contract_id ?? '',
         supplier_id: d.supplier_id ?? '',
-        start_date: d.start_date ?? '',
+        start_date: d.start_date ?? todayIst(),
         end_date: d.end_date ?? '',
         value_cap: d.value_cap != null ? String(d.value_cap) : '',
         consumed_value: '0',
@@ -62,9 +63,9 @@ export default function ContractsPage() {
           : [emptyLine()],
       );
       setShowForm(true);
-      setExtractNote(`Extracted ${d.lines?.length ?? 0} line(s) from the PDF — review before saving.`);
+      setExtractNote({ tone: 'info', text: `Extracted ${d.lines?.length ?? 0} line(s) from the signed PDF. Review the values before saving.` });
     } catch (e) {
-      setExtractNote(e instanceof Error ? e.message : 'Could not read the PDF');
+      setExtractNote({ tone: 'error', text: e instanceof Error ? e.message : 'Could not read the PDF' });
     } finally {
       setExtractBusy(false);
     }
@@ -84,7 +85,7 @@ export default function ContractsPage() {
       };
       await api('/api/contracts', { method: 'POST', body: JSON.stringify(body) });
       setShowForm(false);
-      setForm({ contract_id: '', supplier_id: '', start_date: '', end_date: '', value_cap: '', consumed_value: '0' });
+      setForm({ contract_id: '', supplier_id: '', start_date: todayIst(), end_date: '', value_cap: '', consumed_value: '0' });
       setDraftLines([emptyLine()]);
       await load();
     } catch (e) {
@@ -93,50 +94,58 @@ export default function ContractsPage() {
   }
 
   const linesFor = (id: string) => lines.filter((l) => l.contract_id === id);
+  const pdfOnly = contracts.filter((c) => c.source === 'pdf').length;
 
   return (
     <div>
       <PageHeader
         title="Rate contracts"
-        subtitle="The register loads from master data. Contracts signed after the last register update exist only as signed PDFs — upload one and the app extracts it into the register."
-        actions={<button className={btnPrimary} onClick={() => setShowForm((v) => !v)}>Add contract</button>}
+        subtitle="The register as at 31 October. Contracts signed after that update exist only as signed PDFs — upload one and the app extracts the term, ceiling and rates for review."
+        meta={<><span>{contracts.length} contracts</span><span className="text-rule-dark">/</span><span>{pdfOnly} added from PDF</span><span className="text-rule-dark">/</span><span>Ceiling checks run by requirement date</span></>}
+        actions={<button className={btnPrimary} onClick={() => { setShowForm((v) => !v); setExtractNote(null); }}>{showForm ? 'Close form' : 'Add contract'}</button>}
       />
-      <div className="px-8 py-6">
+      <div className="px-4 py-5 lg:px-8">
         {showForm ? (
-          <Card className="mb-6 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">Add or update a contract</h2>
-              <label className={btnSecondary}>
-                {extractBusy ? 'Reading PDF…' : 'Upload signed PDF to prefill'}
+          <Card className="mb-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule px-5 py-3">
+              <h2 className="text-[13px] font-semibold text-ink">Add or update a contract</h2>
+              <label className={`${btnSecondary} cursor-pointer`}>
+                {extractBusy ? 'Reading PDF…' : 'Extract from signed PDF'}
                 <input type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPdf(f); }} />
               </label>
             </div>
-            {extractNote ? <p className="mt-2 text-xs text-slate-500">{extractNote}</p> : null}
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div><label className={labelCls}>Contract ID</label><input className={inputCls} placeholder="RC-2026-040" value={form.contract_id} onChange={(e) => setForm({ ...form, contract_id: e.target.value })} /></div>
-              <div><label className={labelCls}>Supplier ID</label><input className={inputCls} placeholder="S021" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })} /></div>
-              <div><label className={labelCls}>Value ceiling (INR)</label><input className={inputCls} placeholder="2000000" value={form.value_cap} onChange={(e) => setForm({ ...form, value_cap: e.target.value })} /></div>
-              <div><label className={labelCls}>Start date</label><input type="date" className={inputCls} value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
-              <div><label className={labelCls}>End date</label><input type="date" className={inputCls} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
-              <div><label className={labelCls}>Consumed at register update</label><input className={inputCls} value={form.consumed_value} onChange={(e) => setForm({ ...form, consumed_value: e.target.value })} /></div>
+            {extractNote ? (
+              <div className="px-5 pt-3">
+                <Alert tone={extractNote.tone === 'error' ? 'error' : 'info'}>{extractNote.text}</Alert>
+              </div>
+            ) : null}
+            <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
+              <div><label className={labelCls}>Contract ID</label><input className={`${inputCls} mono`} placeholder="RC-2026-040" value={form.contract_id} onChange={(e) => setForm({ ...form, contract_id: e.target.value })} /></div>
+              <div><label className={labelCls}>Supplier</label><input className={`${inputCls} mono`} placeholder="S021" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })} /></div>
+              <div><label className={labelCls}>Value ceiling (INR)</label><input className={`${inputCls} mono`} placeholder="2000000" value={form.value_cap} onChange={(e) => setForm({ ...form, value_cap: e.target.value })} /></div>
+              <div><label className={labelCls}>Start date</label><input type="date" className={`${inputCls} mono`} value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
+              <div><label className={labelCls}>End date</label><input type="date" className={`${inputCls} mono`} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></div>
+              <div><label className={labelCls}>Consumed at register update</label><input className={`${inputCls} mono`} value={form.consumed_value} onChange={(e) => setForm({ ...form, consumed_value: e.target.value })} /></div>
             </div>
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Contract lines</p>
-              <div className="space-y-2">
+            <div className="border-t border-rule px-5 py-4">
+              <div className="flex items-baseline justify-between">
+                <p className="mono text-[10px] uppercase tracking-[0.09em] text-steel">Contract lines</p>
+                <button className="mono text-[10px] uppercase tracking-[0.06em] text-draft hover:underline" onClick={() => setDraftLines([...draftLines, emptyLine()])}>+ Add line</button>
+              </div>
+              <div className="mt-2 space-y-2">
                 {draftLines.map((l, i) => (
-                  <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_80px_110px_40px]">
-                    <input className={inputCls} placeholder="ITM-1036" value={l.item_code} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, item_code: e.target.value } : x))} />
+                  <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-[130px_1fr_78px_110px_34px]">
+                    <input className={`${inputCls} mono`} placeholder="ITM-1036" value={l.item_code} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, item_code: e.target.value } : x))} />
                     <input className={inputCls} placeholder="Description" value={l.description} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, description: e.target.value } : x))} />
-                    <input className={inputCls} placeholder="UoM" value={l.uom} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, uom: e.target.value } : x))} />
-                    <input className={inputCls} placeholder="Rate" value={l.rate} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, rate: e.target.value } : x))} />
-                    <button className="rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" onClick={() => setDraftLines(draftLines.filter((_, j) => j !== i))}>×</button>
+                    <input className={`${inputCls} mono`} placeholder="UoM" value={l.uom} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, uom: e.target.value } : x))} />
+                    <input className={`${inputCls} mono`} placeholder="Rate" value={l.rate} onChange={(e) => setDraftLines(draftLines.map((x, j) => j === i ? { ...x, rate: e.target.value } : x))} />
+                    <button className="border border-rule text-steel hover:border-signal hover:text-signal" onClick={() => setDraftLines(draftLines.filter((_, j) => j !== i))} aria-label="Remove line">×</button>
                   </div>
                 ))}
               </div>
-              <button className="mt-2 text-xs font-medium text-slate-600 hover:text-slate-900" onClick={() => setDraftLines([...draftLines, emptyLine()])}>+ Add line</button>
             </div>
-            {saveError ? <div className="mt-3"><Alert>{saveError}</Alert></div> : null}
-            <div className="mt-4 flex gap-2">
+            {saveError ? <div className="px-5 pb-3"><Alert>{saveError}</Alert></div> : null}
+            <div className="flex items-center gap-2 border-t border-rule bg-[#f7f8f3] px-5 py-3">
               <button className={btnPrimary} onClick={save}>Save contract</button>
               <button className={btnSecondary} onClick={() => setShowForm(false)}>Cancel</button>
             </div>
@@ -147,10 +156,10 @@ export default function ContractsPage() {
           <Empty title="No contracts loaded" hint="Upload the contract register in Data & runs, or add a contract above." />
         ) : (
           <Card className="overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="ledger">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/60 text-left text-[11px] uppercase tracking-wider text-slate-500">
-                  <th className="px-4 py-2.5">Contract</th><th className="px-4 py-2.5">Supplier</th><th className="px-4 py-2.5">Valid</th><th className="px-4 py-2.5">Ceiling used</th><th className="px-4 py-2.5">Source</th><th className="px-4 py-2.5">Lines</th>
+                <tr>
+                  <th>Contract</th><th>Supplier</th><th>Term</th><th className="w-56">Ceiling used</th><th>Source</th><th>Lines</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,35 +167,42 @@ export default function ContractsPage() {
                   const cl = linesFor(c.contract_id);
                   const pct = c.value_cap ? Math.min(100, Math.round((c.consumed_value / c.value_cap) * 100)) : 0;
                   return (
-                    <>
-                      <tr key={c.contract_id} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/60" onClick={() => setOpen(open === c.contract_id ? null : c.contract_id)}>
-                        <td className="px-4 py-2.5 font-medium text-slate-800">{c.contract_id}</td>
-                        <td className="px-4 py-2.5">{c.supplier_id}</td>
-                        <td className="px-4 py-2.5 whitespace-nowrap text-xs">{c.start_date} → {c.end_date}</td>
-                        <td className="px-4 py-2.5">
+                    <Fragment key={c.contract_id}>
+                      <tr className="cursor-pointer" onClick={() => setOpen(open === c.contract_id ? null : c.contract_id)}>
+                        <td className="mono text-[12px] font-medium text-ink">{c.contract_id}</td>
+                        <td className="mono text-[12px]">{c.supplier_id}</td>
+                        <td className="mono whitespace-nowrap text-[11px] text-graphite">{c.start_date} → {c.end_date}</td>
+                        <td>
                           <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-slate-700" style={{ width: `${pct}%` }} /></div>
-                            <span className="text-xs text-slate-500">{fmtInr(c.consumed_value, 0)} / {fmtInr(c.value_cap, 0)}</span>
+                            <div className="h-[6px] w-24 shrink-0 overflow-hidden border border-rule bg-[#eceee8]">
+                              <div className={`h-full ${pct >= 95 ? 'bg-signal' : pct >= 80 ? 'bg-[#c6a15b]' : 'bg-draft'}`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="mono whitespace-nowrap text-[10px] text-steel">{fmtInr(c.consumed_value, 0)} / {fmtInr(c.value_cap, 0)}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-2.5"><Badge tone={c.source === 'pdf' ? 'DRAFT' : 'ACTIVE'}>{c.source === 'pdf' ? 'PDF-only' : 'Register'}</Badge></td>
-                        <td className="px-4 py-2.5">{cl.length}</td>
+                        <td><Badge tone={c.source === 'pdf' ? 'DRAFT' : 'ACTIVE'}>{c.source === 'pdf' ? 'PDF only' : 'Register'}</Badge></td>
+                        <td className="mono text-[12px]">{cl.length}</td>
                       </tr>
                       {open === c.contract_id ? (
-                        <tr key={`${c.contract_id}-lines`} className="border-b border-slate-100 bg-slate-50/50">
-                          <td colSpan={6} className="px-4 py-3">
-                            <table className="w-full text-xs">
-                              <thead><tr className="text-left text-slate-500"><th className="py-1 pr-4">Item</th><th className="py-1 pr-4">Description</th><th className="py-1 pr-4">UoM</th><th className="py-1">Rate</th></tr></thead>
+                        <tr>
+                          <td colSpan={6} className="bg-[#f6f7f2] p-0">
+                            <table className="w-full text-[11.5px]">
+                              <thead><tr className="border-b border-rule text-left"><th className="mono px-5 py-1.5 text-[9px] uppercase tracking-[0.08em] text-steel">Item</th><th className="mono py-1.5 text-[9px] uppercase tracking-[0.08em] text-steel">Description</th><th className="mono py-1.5 text-[9px] uppercase tracking-[0.08em] text-steel">UoM</th><th className="mono py-1.5 text-[9px] uppercase tracking-[0.08em] text-steel">Rate</th></tr></thead>
                               <tbody>
                                 {cl.map((l) => (
-                                  <tr key={l.item_code} className="border-t border-slate-200/60"><td className="py-1 pr-4 font-medium">{l.item_code}</td><td className="py-1 pr-4">{l.description}</td><td className="py-1 pr-4">{l.uom}</td><td className="py-1">{fmtInr(l.rate)}</td></tr>
+                                  <tr key={l.item_code} className="border-b border-rule/70 last:border-0">
+                                    <td className="mono px-5 py-1.5">{l.item_code}</td>
+                                    <td className="py-1.5">{l.description}</td>
+                                    <td className="mono py-1.5">{l.uom}</td>
+                                    <td className="mono py-1.5">{fmtInr(l.rate)}</td>
+                                  </tr>
                                 ))}
                               </tbody>
                             </table>
                           </td>
                         </tr>
                       ) : null}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

@@ -15,6 +15,11 @@ export interface ProcessResult {
   stats: Record<string, number>;
 }
 
+/**
+ * Processes a batch and persists everything with a handful of bulk statements.
+ * (Row-by-row inserts over a pooled Neon connection blow through serverless
+ * timeouts on ~200-line batches.)
+ */
 export async function processBatch(
   batchId: number,
   actor: Actor,
@@ -43,68 +48,151 @@ export async function processBatch(
   );
 
   const lineId = new Map<string, number>();
-  for (const l of lines) lineId.set(`${l.pr_no}/${l.pr_line}`, l.id);
+  const lineSort = new Map<string, number>();
+  for (const l of lines) {
+    lineId.set(`${l.pr_no}/${l.pr_line}`, l.id);
+    lineSort.set(`${l.pr_no}/${l.pr_line}`, l.sort_order);
+  }
 
-  for (const req of result.requirements) {
-    const [row] = await q<{ id: number }>(
-      `INSERT INTO requirements
-        (run_id, group_id, item_code, item_description, plant, first_line_at, need_by_date, is_emergency,
-         total_qty, unit_price, value, decision, route, rule_id, supplier_id, po_id, suggested_supplier_ids,
-         policy_version, reason, contract_id, ref_po_number)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-       RETURNING id`,
-      [
-        run.id, req.group_id, req.item_code, req.item_description, req.plant, req.first_line_at, req.need_by_date, req.is_emergency,
-        req.total_qty, req.unit_price, req.value, req.decision, req.route, req.rule_id, req.supplier_id, req.po_id,
-        req.suggested_supplier_ids.join(';'), req.policy_version, req.reason, req.contract_id, req.ref_po_number,
-      ],
-    );
+  // --- requirements (one statement) ---
+  const reqs = result.requirements;
+  const inserted = reqs.length
+    ? await q<{ id: number; group_id: string }>(
+        `INSERT INTO requirements
+           (run_id, group_id, item_code, item_description, plant, first_line_at, need_by_date, is_emergency,
+            total_qty, unit_price, value, decision, route, rule_id, supplier_id, po_id, suggested_supplier_ids,
+            policy_version, reason, contract_id, ref_po_number)
+         SELECT $1, * FROM UNNEST(
+           $2::text[], $3::text[], $4::text[], $5::text[], $6::timestamp[], $7::date[], $8::boolean[],
+           $9::numeric[], $10::numeric[], $11::numeric[], $12::text[], $13::text[], $14::text[], $15::text[],
+           $16::text[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[]
+         )
+         RETURNING id, group_id`,
+        [
+          run.id,
+          reqs.map((r) => r.group_id),
+          reqs.map((r) => r.item_code),
+          reqs.map((r) => r.item_description ?? null),
+          reqs.map((r) => r.plant),
+          reqs.map((r) => r.first_line_at),
+          reqs.map((r) => r.need_by_date),
+          reqs.map((r) => r.is_emergency),
+          reqs.map((r) => r.total_qty),
+          reqs.map((r) => r.unit_price),
+          reqs.map((r) => r.value),
+          reqs.map((r) => r.decision),
+          reqs.map((r) => r.route),
+          reqs.map((r) => r.rule_id),
+          reqs.map((r) => r.supplier_id),
+          reqs.map((r) => r.po_id),
+          reqs.map((r) => r.suggested_supplier_ids.join(';')),
+          reqs.map((r) => r.policy_version),
+          reqs.map((r) => r.reason),
+          reqs.map((r) => r.contract_id),
+          reqs.map((r) => r.ref_po_number),
+        ],
+      )
+    : [];
+  const idByGroup = new Map(inserted.map((r) => [r.group_id, r.id]));
+
+  // --- requirement <-> line links (one statement) ---
+  const reqIds: number[] = [];
+  const prLineIds: number[] = [];
+  for (const req of reqs) {
+    const rid = idByGroup.get(req.group_id);
+    if (!rid) continue;
     for (const l of req.lines) {
-      const id = lineId.get(`${l.pr_no}/${l.pr_line}`);
-      if (id) {
-        await q(`INSERT INTO requirement_lines (requirement_id, pr_line_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [row.id, id]);
+      const lid = lineId.get(`${l.pr_no}/${l.pr_line}`);
+      if (lid) {
+        reqIds.push(rid);
+        prLineIds.push(lid);
       }
     }
   }
+  if (reqIds.length) {
+    await q(`INSERT INTO requirement_lines (requirement_id, pr_line_id) SELECT * FROM UNNEST($1::int[], $2::int[]) ON CONFLICT DO NOTHING`, [reqIds, prLineIds]);
+  }
 
-  for (const po of result.pos) {
+  // --- purchase orders (one statement) ---
+  if (result.pos.length) {
     await q(
       `INSERT INTO purchase_orders (run_id, po_id, supplier_id, plant, route, total_value, first_req_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [run.id, po.po_id, po.supplier_id, po.plant, po.route, po.total_value, po.first_req_at],
-    );
-  }
-
-  for (const req of result.requirements) {
-    if (req.decision === 'SOURCING_REQUEST') {
-      const [r] = await q<{ id: number }>(`SELECT id FROM requirements WHERE run_id=$1 AND group_id=$2`, [run.id, req.group_id]);
-      if (r) {
-        await q(
-          `INSERT INTO sourcing_events (run_id, requirement_id, type, supplier_ids) VALUES ($1,$2,$3,$4)`,
-          [run.id, r.id, req.route, req.suggested_supplier_ids.join(';')],
-        );
-      }
-    }
-  }
-
-  for (const row of result.rows) {
-    const id = lineId.get(`${row.pr_no}/${row.pr_line}`) ?? null;
-    const line = lines.find((l) => l.pr_no === row.pr_no && l.pr_line === row.pr_line);
-    await q(
-      `INSERT INTO run_rows
-        (run_id, pr_line_id, sort_order, pr_no, pr_line, resolved_item_code, group_id, po_id, decision, route,
-         supplier_id, unit_price, group_value_inr, suggested_supplier_ids, policy_version, reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+       SELECT $1, * FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::numeric[], $7::timestamp[])`,
       [
-        run.id, id, line?.sort_order ?? 0, row.pr_no, row.pr_line, row.resolved_item_code, row.group_id, row.po_id,
-        row.decision || null, row.route, row.supplier_id || null, row.unit_price === '' ? null : Number(row.unit_price),
-        row.group_value_inr === '' ? null : Number(row.group_value_inr), row.suggested_supplier_ids, row.policy_version || null,
-        row.reason,
+        run.id,
+        result.pos.map((p) => p.po_id),
+        result.pos.map((p) => p.supplier_id),
+        result.pos.map((p) => p.plant),
+        result.pos.map((p) => p.route),
+        result.pos.map((p) => p.total_value),
+        result.pos.map((p) => p.first_req_at),
       ],
     );
+  }
+
+  // --- sourcing events (one statement) ---
+  const seReq: number[] = [];
+  const seType: string[] = [];
+  const seSup: string[] = [];
+  for (const req of reqs) {
+    if (req.decision !== 'SOURCING_REQUEST') continue;
+    const rid = idByGroup.get(req.group_id);
+    if (!rid) continue;
+    seReq.push(rid);
+    seType.push(req.route);
+    seSup.push(req.suggested_supplier_ids.join(';'));
+  }
+  if (seReq.length) {
+    await q(`INSERT INTO sourcing_events (run_id, requirement_id, type, supplier_ids) SELECT $1, * FROM UNNEST($2::int[], $3::text[], $4::text[])`, [run.id, seReq, seType, seSup]);
+  }
+
+  // --- export snapshot (one statement) ---
+  if (result.rows.length) {
+    await q(
+      `INSERT INTO run_rows
+         (run_id, pr_line_id, sort_order, pr_no, pr_line, resolved_item_code, group_id, po_id, decision, route,
+          supplier_id, unit_price, group_value_inr, suggested_supplier_ids, policy_version, reason)
+       SELECT $1, * FROM UNNEST(
+         $2::int[], $3::int[], $4::text[], $5::int[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+         $11::text[], $12::numeric[], $13::numeric[], $14::text[], $15::text[], $16::text[]
+       )`,
+      [
+        run.id,
+        result.rows.map((r) => lineId.get(`${r.pr_no}/${r.pr_line}`) ?? null),
+        result.rows.map((r) => lineSort.get(`${r.pr_no}/${r.pr_line}`) ?? 0),
+        result.rows.map((r) => r.pr_no),
+        result.rows.map((r) => r.pr_line),
+        result.rows.map((r) => r.resolved_item_code),
+        result.rows.map((r) => r.group_id || null),
+        result.rows.map((r) => r.po_id || null),
+        result.rows.map((r) => r.decision || null),
+        result.rows.map((r) => r.route),
+        result.rows.map((r) => r.supplier_id || null),
+        result.rows.map((r) => (r.unit_price === '' ? null : Number(r.unit_price))),
+        result.rows.map((r) => (r.group_value_inr === '' ? null : Number(r.group_value_inr))),
+        result.rows.map((r) => r.suggested_supplier_ids),
+        result.rows.map((r) => r.policy_version || null),
+        result.rows.map((r) => r.reason),
+      ],
+    );
+  }
+
+  // --- resolved item codes on the source lines (one statement) ---
+  const updIds: number[] = [];
+  const updCodes: string[] = [];
+  for (const row of result.rows) {
+    const id = lineId.get(`${row.pr_no}/${row.pr_line}`);
     if (id && row.resolved_item_code) {
-      await q(`UPDATE pr_lines SET resolved_item_code=$1 WHERE id=$2`, [row.resolved_item_code, id]);
+      updIds.push(id);
+      updCodes.push(row.resolved_item_code);
     }
+  }
+  if (updIds.length) {
+    await q(
+      `UPDATE pr_lines p SET resolved_item_code = v.code
+       FROM (SELECT UNNEST($1::int[]) AS id, UNNEST($2::text[]) AS code) v WHERE p.id = v.id`,
+      [updIds, updCodes],
+    );
   }
 
   await audit(actor, 'run.process', 'run', run.id, { batchId, stats, policyVersions: result.policyVersionsUsed });

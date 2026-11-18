@@ -1,31 +1,135 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f7f9;
-  --foreground: #0f172a;
+  --ink: #141b1e;
+  --graphite: #2a3439;
+  --paper: #f2f3ee;
+  --panel: #fbfbf7;
+  --draft: #24506b;
+  --draft-soft: #e4edf3;
+  --signal: #d9552b;
+  --signal-soft: #fbeae3;
+  --steel: #6e7b80;
+  --rule: #d7dbd2;
+  --rule-dark: #b9c0b5;
+  --success: #2c6a4b;
+  --success-soft: #e3efe8;
+  --amber: #9a641c;
+  --amber-soft: #f6edda;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-draft: var(--draft);
+  --color-draftsoft: var(--draft-soft);
+  --color-signal: var(--signal);
+  --color-signalsoft: var(--signal-soft);
+  --color-steel: var(--steel);
+  --color-rule: var(--rule);
+  --color-ruledark: var(--rule-dark);
+  --color-success: var(--success);
+  --color-successsoft: var(--success-soft);
+  --color-amber: var(--amber);
+  --color-ambersoft: var(--amber-soft);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01" 1;
 }
 
 ::selection {
-  background: #c7d2fe;
+  background: #c9dce8;
+}
+
+.mono {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* faint engineering paper grid behind the workspace */
+.draft-grid {
+  background-image:
+    linear-gradient(to right, rgba(36, 80, 107, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(36, 80, 107, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+.panel-flat {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+}
+
+.rule-line {
+  border-top: 1px solid var(--rule);
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--draft);
+  outline-offset: 2px;
 }
 
 .scroll-thin::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 8px;
+  background: #c3c9be;
+  border-radius: 6px;
+}
+
+/* table baseline */
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ledger th {
+  font-family: var(--font-plex-mono), monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--steel);
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+.ledger td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  font-size: 13px;
+}
+.ledger tbody tr:hover {
+  background: #f5f6f1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,6 +1,6 @@
 import { ensureSchema, q } from '@/db';
 import { bad, ok } from '@/lib/api';
-import { parseMessage, mergeDraft, missing, summary, type ChatDraft } from '@/lib/chatNlu';
+import { parseMessage, mergeDraft, missing, type ChatDraft } from '@/lib/chatNlu';
 import type { Item } from '@/engine/types';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   }
 
   return ok({
-    reply: `Here is what I have — please confirm:\n\n${summary(draft)}\n\nShall I raise the PR?`,
+    reply: 'Everything needed is here. Check the requisition slip below and raise it when it looks right.',
     draft,
     ready: true,
     missing: [],

@@ -7,6 +7,7 @@ const items: Item[] = [
   { item_code: 'ITM-1021', description: 'Ball bearing 6205-2RS', uom: 'NOS', category: 'Bearings & Transmission', item_type: 'Material', standard_price: 210 },
   { item_code: 'ITM-1022', description: 'Ball bearing 6308-ZZ', uom: 'NOS', category: 'Bearings & Transmission', item_type: 'Material', standard_price: 640 },
   { item_code: 'ITM-1044', description: 'VCI bag 600x900', uom: 'NOS', category: 'Packaging', item_type: 'Material', standard_price: 21 },
+  { item_code: 'ITM-1049', description: 'Safety helmet ISI', uom: 'NOS', category: 'Safety & PPE', item_type: 'Material', standard_price: 210 },
 ];
 const now = new Date(2026, 10, 18, 9, 0); // Wed 18 Nov 2026 local
 
@@ -37,6 +38,14 @@ describe('parseMessage', () => {
     const r = parseMessage('need a drinking water purifier', items, now);
     expect(r.fields.item_code).toBeUndefined();
     expect(r.newItemQuery).toContain('water purifier');
+  });
+
+  it('matches plurals once the quantity is stripped (helmets)', () => {
+    const r = parseMessage('need 120 safety helmets for Bhosari by 10 December', items, now);
+    expect(r.fields.quantity).toBe(120);
+    expect(r.fields.plant).toBe('PUN1');
+    expect(r.fields.need_by_date).toBe('2026-12-10');
+    expect(r.fields.item_code).toBe('ITM-1049');
   });
 
   it('asks for missing slots', () => {

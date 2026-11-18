@@ -28,8 +28,24 @@ export function getPool(): Pool {
   return pool;
 }
 
+function isTransient(err: unknown): boolean {
+  const code = (err as { code?: string })?.code ?? '';
+  return ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', '57P01', '08006', '08001'].includes(code);
+}
+
+async function queryWithRetry(sql: string, params: unknown[]): Promise<any> {
+  try {
+    return await getPool().query(sql, params as any[]);
+  } catch (err) {
+    if (!isTransient(err)) throw err;
+    // Neon and other poolers recycle idle connections; one fresh retry is enough.
+    await new Promise((r) => setTimeout(r, 250));
+    return getPool().query(sql, params as any[]);
+  }
+}
+
 export async function q<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
-  const res = await getPool().query(sql, params as any[]);
+  const res = await queryWithRetry(sql, params);
   return res.rows as T[];
 }
 

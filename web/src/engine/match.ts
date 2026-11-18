@@ -19,6 +19,15 @@ const STOP = new Set([
   'sample', 'maintenance', 'urgent', 'repeat', 'qty', 'nos', 'pcs', 'no',
 ]);
 
+/** Light singularisation: requesters type plurals, the master is mostly singular. */
+function singular(t: string): string {
+  if (t.length <= 3) return t;
+  if (/(ss|us|is)$/.test(t)) return t;
+  if (t.endsWith('ies') && t.length > 4) return t.slice(0, -3) + 'y';
+  if (t.endsWith('s')) return t.slice(0, -1);
+  return t;
+}
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -26,8 +35,8 @@ export function tokenize(text: string): string[] {
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .map((t) => ABBREV[t] ?? t)
-    .filter((t) => !STOP.has(t));
+    .filter((t) => !STOP.has(t))
+    .map((t) => singular(ABBREV[t] ?? t));
 }
 
 const weight = (t: string): number => (/\d/.test(t) ? 2 : 1);
