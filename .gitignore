@@ -1,0 +1,17 @@
+# repo-root gitignore
+node_modules/
+web/node_modules/
+web/.next/
+.next/
+out/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+secrets*
+seed_data/
+Cantill_FullStack_Task_Kit/
+extracted/
+.superpowers/
+.DS_Store
+*.log
