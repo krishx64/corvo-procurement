@@ -177,6 +177,20 @@ describe('runEngine', () => {
     expect(res.rows[0].route).toBe('NOT_PROCESSED');
   });
 
+  it('policyMode latest applies the newest version even before its effective date (explicit reprocess)', () => {
+    const amended = loadDefaultPolicy();
+    amended.version = '5.1';
+    amended.effective_date = '2027-01-01'; // after the requirement date
+    const spot = amended.decision_rules.find((r) => r.route === 'SPOT_PO')!;
+    spot.conditions.find((c) => c.field === 'value')!.value = 5000; // small enough to flip the routing
+
+    const base = baseInput([line({ pr_no: 'PR-7', pr_line: 1, quantity: 100 })]); // 100 x 7.06 = 706 -> contract still wins
+    const byDate = runEngine({ ...base, policies: [loadDefaultPolicy(), amended] });
+    const latest = runEngine({ ...base, policies: [loadDefaultPolicy(), amended], policyMode: 'latest' });
+    expect(byDate.requirements[0].policy_version).toBe('5.0');
+    expect(latest.requirements[0].policy_version).toBe('5.1');
+  });
+
   it('export rows carry the exact header and blank sourcing fields', () => {
     const res = runEngine(baseInput([line({ pr_no: 'PR-6', pr_line: 1, item_code: 'ITM-1066', description: 'CMM calibration service', quantity: 5, estimated_unit_price: null })]));
     const row = res.rows[0];

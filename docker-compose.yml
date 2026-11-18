@@ -25,5 +25,18 @@ services:
       db:
         condition: service_healthy
 
+  # Optional one-shot seeder: docker compose --profile seed run --rm seed
+  seed:
+    build: ./web
+    profiles: ["seed"]
+    environment:
+      DATABASE_URL: postgres://corvo:corvo@db:5432/corvo
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./Cantill_FullStack_Task_Kit:/kit:ro
+    command: ["node", "--experimental-strip-types", "scripts/seed.mts", "--dir", "/kit"]
+
 volumes:
   pgdata:

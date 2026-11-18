@@ -15,3 +15,6 @@ extracted/
 .superpowers/
 .DS_Store
 *.log
+.pgdata/
+.playwright-mcp/
+shots/

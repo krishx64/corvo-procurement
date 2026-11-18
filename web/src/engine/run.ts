@@ -66,8 +66,11 @@ export function runEngine(input: EngineInput): EngineResult {
     valid.push(line);
   }
 
+  const useLatest = input.policyMode === 'latest';
+  const policyFor = (date: string): PolicyDoc => (useLatest ? basePolicy : policyAt(date));
+
   // 2. Club into requirements (windows may change mid-batch if a policy amendment applies).
-  const { requirements } = clubLines(valid, resolved, basePolicy, (l) => policyAt(l.created_at));
+  const { requirements } = clubLines(valid, resolved, basePolicy, (l) => policyFor(l.created_at));
 
   // 3. Value + decide in requirement-date order; consume contract ceiling as we go.
   const consumed = new Map<string, number>();
@@ -78,7 +81,7 @@ export function runEngine(input: EngineInput): EngineResult {
   for (const req of requirements) {
     const group_id = `REQ-${String(++reqCounter).padStart(4, '0')}`;
     const reqDate = req.first_line_at.slice(0, 10);
-    const policy = policyAt(reqDate);
+    const policy = policyFor(reqDate);
     const item = req.item;
     const firstLine = req.lines[0];
 

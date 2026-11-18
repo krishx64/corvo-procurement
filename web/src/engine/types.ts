@@ -221,6 +221,12 @@ export interface EngineInput {
   contractLines: ContractLine[];
   policies: PolicyDoc[]; // any order; selected per requirement date
   plants: string[]; // valid plant codes
+  /**
+   * 'requirement_date' (default) applies the version in force on each requirement's
+   * date. 'latest' applies the newest approved version to every requirement — used
+   * when a buyer intentionally reprocesses a batch after an amendment.
+   */
+  policyMode?: 'requirement_date' | 'latest';
 }
 
 export interface EngineResult {
