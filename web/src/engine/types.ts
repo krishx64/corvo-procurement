@@ -78,7 +78,8 @@ export type ConditionField =
   | 'usable_contract'
   | 'bought_from_active_supplier'
   | 'item_code'
-  | 'uom';
+  | 'uom'
+  | 'is_new_item';
 
 export type ConditionOp = 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'in';
 
@@ -143,6 +144,7 @@ export interface RuleContext
   bought_from_active_supplier: boolean;
   item_code: string;
   uom: string;
+  is_new_item: boolean;
 }
 
 // ---------- Engine results ----------
@@ -207,6 +209,7 @@ export interface PoHeader {
   route: string;
   requirement_ids: string[];
   total_value: number;
+  first_req_at: string;
 }
 
 export interface EngineInput {
@@ -217,6 +220,7 @@ export interface EngineInput {
   contracts: Contract[];
   contractLines: ContractLine[];
   policies: PolicyDoc[]; // any order; selected per requirement date
+  plants: string[]; // valid plant codes
 }
 
 export interface EngineResult {

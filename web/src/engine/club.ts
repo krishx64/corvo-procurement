@@ -24,6 +24,7 @@ export function clubLines(
   lines: PrLineInput[],
   resolved: Map<string, Item | undefined>,
   policy: PolicyDoc,
+  policyForLine?: (line: PrLineInput) => PolicyDoc,
 ): ClubResult {
   const sorted = [...lines].sort(compareLines);
   const requirements: Requirement[] = [];
@@ -35,11 +36,12 @@ export function clubLines(
     let joined: Requirement | undefined;
 
     if (item) {
+      const linePolicy = policyForLine?.(line) ?? policy;
       for (const req of requirements) {
         if (!req.item || req.item.item_code !== item.item_code) continue;
         if (req.plant !== line.plant) continue;
-        if (dayDiff(req.first_line_at, line.created_at) > policy.clubbing.creation_window_days) continue;
-        if (Math.abs(dayDiff(req.need_by_date, line.need_by_date ?? req.need_by_date)) > policy.clubbing.need_by_window_days) continue;
+        if (dayDiff(req.first_line_at, line.created_at) > linePolicy.clubbing.creation_window_days) continue;
+        if (Math.abs(dayDiff(req.need_by_date, line.need_by_date ?? req.need_by_date)) > linePolicy.clubbing.need_by_window_days) continue;
         joined = req;
         break; // requirements are stored in first-line creation order => earliest match
       }
