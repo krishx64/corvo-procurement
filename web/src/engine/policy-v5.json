@@ -1,0 +1,96 @@
+{
+  "version": "5.0",
+  "effective_date": "2026-04-01",
+  "description": "Corvo Engineering Procurement Policy v5.0 (CORVO-PROC-POL-04)",
+  "clubbing": {
+    "creation_window_days": 14,
+    "need_by_window_days": 7
+  },
+  "valuation": {
+    "po_history_days": 365,
+    "out_of_ceiling_fallback": "lowest_applicable_contract_rate"
+  },
+  "contracts": {
+    "require_active_supplier": true
+  },
+  "decision_rules": [
+    {
+      "id": "5.1",
+      "priority": 1,
+      "conditions": [{ "field": "item_type", "op": "eq", "value": "Capex" }],
+      "outcome": "SOURCING_REQUEST",
+      "route": "CAPEX_SOURCING",
+      "suggest_count": 5,
+      "note": "Capex items always need a sourcing event and capex approval."
+    },
+    {
+      "id": "5.2",
+      "priority": 2,
+      "conditions": [{ "field": "usable_contract", "op": "eq", "value": true }],
+      "outcome": "PO",
+      "route": "CONTRACT_PO",
+      "supplier": "contract",
+      "price": "contract_rate",
+      "note": "Buy against the rate contract while it has ceiling left."
+    },
+    {
+      "id": "5.3",
+      "priority": 3,
+      "conditions": [
+        { "field": "is_emergency", "op": "eq", "value": true },
+        { "field": "value", "op": "lte", "value": 500000 },
+        { "field": "bought_from_active_supplier", "op": "eq", "value": true }
+      ],
+      "outcome": "PO",
+      "route": "EMERGENCY_PO",
+      "supplier": "first_preferred",
+      "price": "reference_price",
+      "note": "Emergency POs up to Rs 5,00,000 with recent purchase history."
+    },
+    {
+      "id": "5.4",
+      "priority": 4,
+      "conditions": [
+        { "field": "value", "op": "lt", "value": 200000 },
+        { "field": "bought_from_active_supplier", "op": "eq", "value": true }
+      ],
+      "outcome": "PO",
+      "route": "SPOT_PO",
+      "supplier": "first_preferred",
+      "price": "reference_price",
+      "note": "Spot POs below Rs 2,00,000 when the item has a proven Active supplier."
+    },
+    {
+      "id": "5.5",
+      "priority": 5,
+      "conditions": [{ "field": "value", "op": "lt", "value": 1000000 }],
+      "outcome": "SOURCING_REQUEST",
+      "route": "RFQ",
+      "suggest_count": 3,
+      "note": "RFQ below Rs 10,00,000, including items never bought in 365 days."
+    },
+    {
+      "id": "5.6",
+      "priority": 6,
+      "conditions": [{ "field": "value", "op": "gte", "value": 1000000 }],
+      "outcome": "SOURCING_REQUEST",
+      "route": "RFP",
+      "suggest_count": 5,
+      "note": "Formal RFP at Rs 10,00,000 and above."
+    }
+  ],
+  "preferred_suppliers": {
+    "history_days": 548,
+    "recency_tier1_days": 90,
+    "recency_tier2_days": 365,
+    "frequency_cap": 5,
+    "weights": { "recency": 35, "frequency": 25, "contract": 20, "on_time": 10, "quality": 10 },
+    "topup_order": "on_time_x_quality"
+  },
+  "po_consolidation": {
+    "window_hours": 24,
+    "same_supplier": true,
+    "same_plant": true,
+    "same_route": true
+  }
+}
