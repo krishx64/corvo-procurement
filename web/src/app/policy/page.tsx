@@ -50,6 +50,15 @@ export default function PolicyPage() {
   const [rawJson, setRawJson] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [openRule, setOpenRule] = useState<number | null>(null);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'assistant' | 'user'; content: string }>>([
+    {
+      role: 'assistant',
+      content: 'Describe the policy change in your own words. I will turn it into clauses for review — nothing activates without your approval.',
+    },
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   async function load() {
     setBusy(true);
@@ -75,6 +84,38 @@ export default function PolicyPage() {
     setRawJson(JSON.stringify(r.proposed, null, 2));
     setShowEditor(true);
     setSaved(null);
+  }
+
+  async function sendPolicyChat(text: string) {
+    const message = text.trim();
+    if (!message || chatBusy) {
+      return;
+    }
+    setChatError(null);
+    setChatMessages((m) => [...m, { role: 'user', content: message }]);
+    setChatInput('');
+    setChatBusy(true);
+    try {
+      const r = await api<{
+        reply: string;
+        proposed: PolicyDoc | null;
+        changes: Array<{ target: string; plain: string }>;
+        unparsed: string[];
+      }>('/api/policy/chat', { method: 'POST', body: JSON.stringify({ message, base: draft ?? undefined }) });
+      setChatMessages((m) => [...m, { role: 'assistant', content: r.reply }]);
+      if (r.proposed) {
+        setDraft(JSON.parse(JSON.stringify(r.proposed)));
+        setRawJson(JSON.stringify(r.proposed, null, 2));
+        setAmend(null);
+        setShowEditor(true);
+        setOpenRule(null);
+        setSaved(null);
+      }
+    } catch (e) {
+      setChatError(e instanceof Error ? e.message : 'Could not interpret the change');
+    } finally {
+      setChatBusy(false);
+    }
   }
 
   async function readAmendment() {
@@ -178,7 +219,7 @@ export default function PolicyPage() {
     <div>
       <PageHeader
         title="Procurement policy"
-        subtitle="The engine reads its rules from a versioned policy document. Read an amendment, review the change in plain language, then activate it from an effective date — no code change."
+        subtitle="The engine reads its rules from a versioned policy document. Describe a change in chat or read an amendment, review it in plain language, then activate it from an effective date — no code change."
         meta={
           active ? (
             <>
@@ -216,8 +257,42 @@ export default function PolicyPage() {
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
           <div className="space-y-4">
             <Card>
+              <div className="flex items-center justify-between border-b border-rule px-4 py-2.5">
+                <p className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Step 1 · Describe a change</p>
+                <span className="mono text-[9px] uppercase tracking-[0.08em] text-steel">Policy chat</span>
+              </div>
+              <div className="scroll-thin max-h-64 space-y-2 overflow-y-auto px-3 py-3">
+                {chatMessages.map((m, i) =>
+                  m.role === 'user' ? (
+                    <div key={i} className="flex justify-end">
+                      <div className="max-w-[85%] rounded-[3px] bg-ink px-2.5 py-1.5 text-[11.5px] leading-relaxed text-paper">{m.content}</div>
+                    </div>
+                  ) : (
+                    <div key={i} className="flex justify-start">
+                      <div className="max-w-[90%] rounded-[3px] border border-rule bg-white px-2.5 py-1.5 text-[11.5px] leading-relaxed text-graphite">{m.content}</div>
+                    </div>
+                  ),
+                )}
+                {chatBusy ? <p className="mono text-[9.5px] uppercase tracking-[0.08em] text-steel">Reading the change…</p> : null}
+              </div>
+              {chatError ? <div className="px-3 pb-2"><Alert>{chatError}</Alert></div> : null}
+              <form
+                className="flex items-end gap-2 border-t border-rule p-2.5"
+                onSubmit={(e) => { e.preventDefault(); sendPolicyChat(chatInput); }}
+              >
+                <input
+                  className={inputCls}
+                  placeholder="e.g. raise the spot PO limit to 3,00,000"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                />
+                <button type="submit" className={btnPrimary} disabled={chatBusy || !chatInput.trim()}>Send</button>
+              </form>
+            </Card>
+
+            <Card>
               <div className="border-b border-rule px-4 py-2.5">
-                <p className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Step 1 · Amendment</p>
+                <p className="mono text-[10px] uppercase tracking-[0.1em] text-steel">Or read an amendment document</p>
               </div>
               <div className="p-4">
                 <textarea className={`${inputCls} mono text-[12px]`} rows={6} placeholder={'e.g. In rule 5.4, replace 2,00,000 with 3,00,000.\nNew rule 5.4A: for plant CHK1, value under 6,00,000 …'} value={amendText} onChange={(e) => setAmendText(e.target.value)} />

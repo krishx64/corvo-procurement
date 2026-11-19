@@ -54,6 +54,24 @@ describe('parseAmendment', () => {
     expect(rfp.conditions.find((c) => c.field === 'value')!.value).toBe(1500000);
   });
 
+  it('turns a chat-style scoped instruction into a plant-scoped rule, not a global change', () => {
+    const r = parseAmendment('for CHK1, allow spot purchases up to 6,00,000', policy);
+    const base = r.proposed.decision_rules.find((x) => x.id === '5.4')!;
+    expect(base.conditions.find((c) => c.field === 'value')!.value).toBe(200000); // unchanged
+    const scoped = r.proposed.decision_rules.find((x) => x.id.startsWith('5.4') && x.id !== '5.4')!;
+    expect(scoped.id).toBe('5.4A');
+    expect(scoped.conditions).toContainEqual({ field: 'plant', op: 'eq', value: 'CHK1' });
+    expect(scoped.conditions.find((c) => c.field === 'value')!.value).toBe(600000);
+    expect(scoped.route).toBe('SPOT_PO');
+  });
+
+  it('understands conversational limit changes by route', () => {
+    const r = parseAmendment('raise the spot PO limit to ₹3,00,000', policy);
+    expect(r.proposed.decision_rules.find((x) => x.id === '5.4')!.conditions.find((c) => c.field === 'value')!.value).toBe(300000);
+    const r2 = parseAmendment('increase the RFQ threshold to 15 lakh', policy);
+    expect(r2.proposed.decision_rules.find((x) => x.id === '5.5')!.conditions.find((c) => c.field === 'value')!.value).toBe(1500000);
+  });
+
   it('surfaces sentences it cannot interpret instead of guessing', () => {
     const r = parseAmendment('Buyers must wear safety shoes in the warehouse.', policy);
     expect(r.changes).toHaveLength(0);

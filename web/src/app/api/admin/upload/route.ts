@@ -8,6 +8,15 @@ export const runtime = 'nodejs';
 const TYPES = ['items', 'suppliers', 'plants', 'po_history', 'contracts', 'contract_lines'] as const;
 type UploadType = (typeof TYPES)[number];
 
+const REQUIRED_COLUMNS: Record<UploadType, string[]> = {
+  items: ['item_code', 'description', 'standard_price'],
+  suppliers: ['supplier_id', 'name', 'status'],
+  plants: ['plant', 'name'],
+  po_history: ['po_number', 'po_date', 'supplier_id', 'item_code', 'unit_price'],
+  contracts: ['contract_id', 'supplier_id', 'start_date', 'end_date', 'value_cap'],
+  contract_lines: ['contract_id', 'item_code', 'rate'],
+};
+
 export async function POST(req: Request) {
   try {
     await ensureSchema();
@@ -21,6 +30,11 @@ export async function POST(req: Request) {
     const text = await file.text();
     const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true, transformHeader: (h) => h.trim().toLowerCase() });
     if (parsed.errors.length) return bad(parsed.errors.slice(0, 3).map((e) => e.message).join('; '));
+    const fields = parsed.meta.fields ?? [];
+    const missing = REQUIRED_COLUMNS[type].filter((c) => !fields.includes(c));
+    if (missing.length) {
+      return bad(`this file does not look like ${type} data — missing column(s): ${missing.join(', ')}`);
+    }
     const rows = parsed.data;
     let count = 0;
 

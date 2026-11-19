@@ -38,6 +38,20 @@ function ruleById(doc: PolicyDoc, id: string): DecisionRule | undefined {
   return doc.decision_rules.find((r) => r.id.toLowerCase() === id.toLowerCase());
 }
 
+/** 5.4 -> 5.4A, 5.4B … picking the first free suffix letter. */
+function nextScopedId(doc: PolicyDoc, baseId: string): string {
+  const used = new Set(
+    doc.decision_rules
+      .map((r) => r.id)
+      .filter((id) => id.startsWith(baseId) && id.length === baseId.length + 1)
+      .map((id) => id.slice(-1).toUpperCase()),
+  );
+  for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    if (!used.has(ch)) return baseId + ch;
+  }
+  return baseId + 'Z';
+}
+
 function routeOfText(s: string): { route: string; decision: 'PO' | 'SOURCING_REQUEST'; suggest?: number } | null {
   const t = s.toLowerCase();
   const n = t.match(/(\d)\s*suppliers?/);
@@ -156,7 +170,7 @@ export function parseAmendment(text: string, current: PolicyDoc): AmendmentResul
         ? ruleById(proposed, ruleId) ?? ruleById(proposed, ruleId.replace(/[A-Za-z]$/, ''))
         : proposed.decision_rules.find((r) => r.route === route.route);
       const priority = baseRule ? baseRule.priority - 0.5 : Math.max(...proposed.decision_rules.map((r) => r.priority)) + 0.5;
-      const id = ruleId ?? `${baseRule?.id ?? '9.0'}${String.fromCharCode(65 + proposed.decision_rules.length % 26)}`;
+      const id = ruleId ?? nextScopedId(proposed, baseRule?.id ?? '9.0');
       const newRule: DecisionRule = {
         id,
         priority,
@@ -193,10 +207,34 @@ export function parseAmendment(text: string, current: PolicyDoc): AmendmentResul
     const rule = ruleId ? ruleById(proposed, ruleId) : route ? proposed.decision_rules.find((r) => r.route === route.route) : undefined;
 
     if (rule && allAmounts.length > 0) {
+      const scoped = qualifiers(sentence);
+      const next = allAmounts[allAmounts.length - 1];
+
+      // "for CHK1, allow spot up to 6 lakh" must not widen the base rule globally:
+      // create a plant/category-scoped copy that sits just before it.
+      if (scoped.length > 0) {
+        const valueConds = rule.conditions.filter((c) => c.field === 'value');
+        const newRule: DecisionRule = {
+          ...JSON.parse(JSON.stringify(rule)),
+          id: nextScopedId(proposed, rule.id),
+          priority: rule.priority - 0.5,
+          conditions: [
+            ...scoped,
+            ...(valueConds.length
+              ? [{ field: 'value' as const, op: valueConds[0].op, value: next }]
+              : [{ field: 'value' as const, op: 'lt' as const, value: next }]),
+            ...rule.conditions.filter((c) => c.field !== 'value' && !scoped.some((q) => q.field === c.field)),
+          ],
+          note: 'Added by amendment.',
+        };
+        proposed.decision_rules.push(newRule);
+        changes.push({ kind: 'new_rule', target: `Rule ${newRule.id}`, plain: plainRule(newRule) + ` (scoped copy of rule ${rule.id})` });
+        continue;
+      }
+
       const valueConds = rule.conditions.filter((c) => c.field === 'value');
       if (valueConds.length > 0) {
         const old = Number(valueConds[0].value);
-        const next = allAmounts[allAmounts.length - 1];
         for (const c of valueConds) c.value = next;
         changes.push({ kind: 'limit', target: `Rule ${rule.id}`, before: money(old), after: money(next), plain: `Rule ${rule.id} (${rule.route}) limit changes from ${money(old)} to ${money(next)}.` });
         continue;
