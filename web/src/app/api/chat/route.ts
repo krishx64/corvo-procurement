@@ -20,6 +20,8 @@ function askFor(slot: string): string {
       return 'Which plant is this for — PUN1 (Bhosari) or CHK1 (Chakan)?';
     case 'need_by_date':
       return 'When do you need it by?';
+    case 'urgency':
+      return 'Is this a normal request or urgent? Say “urgent” if it must be expedited (emergency up to ₹5,00,000 can be bought without quotes).';
     case 'estimated_unit_price':
       return 'This item is not in the item master, so it will be raised as a new item for sourcing. What unit price do you estimate (INR)?';
     default:
@@ -68,7 +70,13 @@ export async function POST(req: Request) {
 
   const need = missing(draft);
   if (need.length > 0) {
-    return ok({ reply: askFor(need[0]), draft, ready: false, missing: need });
+    return ok({
+      reply: askFor(need[0]),
+      draft,
+      ready: false,
+      missing: need,
+      quickReplies: need[0] === 'urgency' ? ['Normal', 'Urgent'] : undefined,
+    });
   }
 
   return ok({

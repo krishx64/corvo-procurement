@@ -12,6 +12,7 @@ interface ChatResponse {
   ready: boolean;
   candidates?: Candidate[];
   missing?: string[];
+  quickReplies?: string[];
 }
 interface ConfirmResponse {
   pr_no: string;
@@ -45,6 +46,7 @@ export default function ChatPage() {
   const [draft, setDraft] = useState<any>(null);
   const [ready, setReady] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [quickReplies, setQuickReplies] = useState<string[]>([]);
   const [result, setResult] = useState<ConfirmResponse | null>(null);
   const [policyVersion, setPolicyVersion] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -73,6 +75,7 @@ export default function ChatPage() {
       setDraft(res.draft);
       setReady(res.ready);
       setCandidates(res.candidates ?? []);
+      setQuickReplies(res.quickReplies ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Chat failed');
     } finally {
@@ -88,6 +91,7 @@ export default function ChatPage() {
       const res = await api<ConfirmResponse>('/api/chat/confirm', { method: 'POST', body: JSON.stringify({ draft }) });
       setResult(res);
       setReady(false);
+      setQuickReplies([]);
       setMessages((m) => [...m, { role: 'assistant', content: `Requisition ${res.pr_no} is raised. The policy decision is attached below and queued for the buyer.` }]);
       setDraft(null);
     } catch (e) {
@@ -102,6 +106,7 @@ export default function ChatPage() {
     setDraft(null);
     setReady(false);
     setCandidates([]);
+    setQuickReplies([]);
     setResult(null);
     setError(null);
   }
@@ -229,6 +234,20 @@ export default function ChatPage() {
                 {candidates.map((c) => (
                   <button key={c.item_code} className="focus-ring rounded-[3px] border border-rule-dark bg-white px-2 py-1 text-[11px] text-graphite hover:border-draft hover:text-draft" onClick={() => send(c.item_code)}>
                     {c.description} <span className="mono text-steel">· {c.item_code}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {quickReplies.length > 0 ? (
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="mono text-[9.5px] uppercase tracking-[0.08em] text-steel">Answer</span>
+                {quickReplies.map((q) => (
+                  <button
+                    key={q}
+                    className={`focus-ring rounded-[3px] border px-2.5 py-1 text-[11px] font-medium ${q === 'Urgent' ? 'border-signal/50 bg-signalsoft text-signal hover:border-signal' : 'border-rule-dark bg-white text-graphite hover:border-draft hover:text-draft'}`}
+                    onClick={() => send(q)}
+                  >
+                    {q}
                   </button>
                 ))}
               </div>

@@ -168,6 +168,7 @@ export function missing(d: ChatDraft): string[] {
   if (d.quantity == null) out.push('quantity');
   if (!d.plant) out.push('plant');
   if (!d.need_by_date) out.push('need_by_date');
+  if (!d.urgency) out.push('urgency');
   if (d.is_new_item && d.estimated_unit_price == null) out.push('estimated_unit_price');
   return out;
 }

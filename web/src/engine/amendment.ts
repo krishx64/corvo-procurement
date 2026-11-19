@@ -34,6 +34,17 @@ function money(n: number): string {
   return '₹' + n.toLocaleString('en-IN');
 }
 
+/** Document headings, signatures and page furniture are not failed instructions. */
+function isNoise(sentence: string): boolean {
+  const words = sentence.split(/\s+/).filter(Boolean);
+  const letters = sentence.replace(/[^A-Za-z]/g, '');
+  const caps = sentence.replace(/[^A-Z]/g, '');
+  if (letters.length > 0 && caps.length / letters.length > 0.7) return true;
+  if (/^(to|from|signed|effective date|date|subject|ref|reference|note|prepared|approved|cc)\b[:\s]/i.test(sentence)) return true;
+  if (words.length <= 6 && !/[.!?]$/.test(sentence) && !/(?:₹|rs\.?\s|inr|\d\s*(?:lakh|lac|crore|days?|hours?))/i.test(sentence)) return true;
+  return false;
+}
+
 function ruleById(doc: PolicyDoc, id: string): DecisionRule | undefined {
   return doc.decision_rules.find((r) => r.id.toLowerCase() === id.toLowerCase());
 }
@@ -110,9 +121,25 @@ export function parseAmendment(text: string, current: PolicyDoc): AmendmentResul
   const changes: PolicyChange[] = [];
   const unparsed: string[] = [];
 
-  const sentences = text
+  // PDF extraction wraps sentences at arbitrary points. Join continuation lines
+  // before splitting into sentences, but keep list items / headings separate.
+  const lines = text
     .replace(/\r/g, '')
-    .split(/(?<=[.!?;:])\s+(?=[A-Z“"'(])|\n+/)
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const merged: string[] = [];
+  for (const line of lines) {
+    const startsNew =
+      /^\d+[.)]\s/.test(line) ||
+      /^(new rule|in rule|rule|clause|section|amendment|policy|procurement|effective|note)\b/i.test(line) ||
+      /^(to|from|signed|date|subject|ref|reference|prepared|approved|cc)[:\s]/i.test(line) ||
+      /^[A-Z][A-Z\s&.'-]{4,}$/.test(line);
+    if (merged.length === 0 || startsNew) merged.push(line);
+    else merged[merged.length - 1] += ' ' + line;
+  }
+  const sentences = merged
+    .flatMap((s) => s.split(/(?<=[.!?;:])\s+(?=[A-Z“"'(])/))
     .map((s) => s.trim())
     .filter((s) => s.length > 3 && /[a-z]/i.test(s));
 
@@ -156,7 +183,7 @@ export function parseAmendment(text: string, current: PolicyDoc): AmendmentResul
     if (isNewRule) {
       const route = routeOfText(sentence);
       if (!route) {
-        unparsed.push(sentence);
+        if (!isNoise(sentence)) unparsed.push(sentence);
         continue;
       }
       const conds: Condition[] = [...qualifiers(sentence)];
@@ -265,7 +292,7 @@ export function parseAmendment(text: string, current: PolicyDoc): AmendmentResul
       }
     }
 
-    unparsed.push(sentence);
+    if (!isNoise(sentence)) unparsed.push(sentence);
   }
 
   return { proposed, changes, unparsed };

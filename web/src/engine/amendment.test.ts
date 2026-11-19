@@ -72,6 +72,26 @@ describe('parseAmendment', () => {
     expect(r2.proposed.decision_rules.find((x) => x.id === '5.5')!.conditions.find((c) => c.field === 'value')!.value).toBe(1500000);
   });
 
+  it('joins PDF line-wrapped sentences before interpreting them', () => {
+    const text = [
+      'CORVO ENGINEERING PVT LTD',
+      'PROCUREMENT POLICY — AMENDMENT',
+      '',
+      '1. In rule 5.5, replace ₹10,00,000 with',
+      '₹12,00,000. 2. New rule 5.5A: for plant PUN1',
+      'and category Safety & PPE, value below ₹2,50,000',
+      'and bought from an Active supplier in the last 365 days,',
+      'create a spot PO.',
+    ].join('\n');
+    const r = parseAmendment(text, policy);
+    expect(r.proposed.decision_rules.find((x) => x.id === '5.5')!.conditions.find((c) => c.field === 'value')!.value).toBe(1200000);
+    const added = r.proposed.decision_rules.find((x) => x.id === '5.5A')!;
+    expect(added.conditions).toContainEqual({ field: 'plant', op: 'eq', value: 'PUN1' });
+    expect(added.conditions.find((c) => c.field === 'value')!.value).toBe(250000);
+    expect(added.route).toBe('SPOT_PO');
+    expect(r.unparsed).toHaveLength(0); // headings/signatures are not reported as failures
+  });
+
   it('surfaces sentences it cannot interpret instead of guessing', () => {
     const r = parseAmendment('Buyers must wear safety shoes in the warehouse.', policy);
     expect(r.changes).toHaveLength(0);

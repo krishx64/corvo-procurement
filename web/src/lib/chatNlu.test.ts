@@ -53,6 +53,17 @@ describe('parseMessage', () => {
     const d = mergeDraft({}, r);
     expect(missing(d)).toContain('plant');
     expect(missing(d)).toContain('need_by_date');
+    expect(missing(d)).toContain('urgency');
+  });
+
+  it('takes urgency from a follow-up answer', () => {
+    const base = mergeDraft({}, parseMessage('need 400 nitrile gloves for Chakan by 5 December', items, now));
+    expect(missing(base)).toContain('urgency');
+    const normal = mergeDraft(base, parseMessage('normal', items, now));
+    expect(normal.urgency).toBe('Normal');
+    expect(missing(normal)).not.toContain('urgency');
+    const urgent = mergeDraft(base, parseMessage('urgent', items, now));
+    expect(urgent.urgency).toBe('Emergency');
   });
 
   it('does not bind an ambiguous match — offers candidates instead', () => {
