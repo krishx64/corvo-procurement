@@ -1,6 +1,18 @@
 # DECISIONS
 
-Where the policy is silent, ambiguous, or in tension with the data, this file records what I noticed, what the app does, and why. Rules that are explicit in the policy are implemented literally; this file only covers the gaps.
+Where the policy is silent, ambiguous, or in tension with the data, this file records what I noticed, what the app does, and why.
+
+## Blind test — 19 November 2026 (Amendment No. 1, v5.1)
+
+- **Run 1** — `hidden_pr_batch.csv` (190 lines, 23 Nov–11 Dec 2026) processed on the frozen hosted app under **policy v5.0**: 153 requirements, 95 POs, 190 export rows. Export: `submission/krishjaiswal__run1.csv`.
+- **Run 2** — Amendment No. 1 PDF uploaded through the app's policy-update feature (parse → review → activate). The parser read A2 correctly and proposed a wrong reading of A1 (packaging word order) and A3 (the word “emergency” in the clause); these were corrected in the rule editor before approval. **v5.1 activated effective 1 December 2026**, implemented as data:
+  - **A1**: rule 5.4 now excludes Packaging; new rule **5.4A** (priority 3.5) gives Packaging spot POs only below ₹1,00,000 with purchase history. Packaging ≥ ₹1,00,000 falls through to RFQ/RFP. Emergency packaging above ₹1,00,000 still uses 5.3: A1 is worded as a change to the spot rule only, while A3 explicitly says “even if it would otherwise qualify for an emergency or spot PO”.
+  - **A2**: rules 5.5 and 5.6 thresholds moved to ₹8,00,000.
+  - **A3**: new rules **5.2A** (CHK1 + Electrical Spares + ≥ ₹50,000 + < ₹8,00,000 → RFQ, 3 suggestions) and **5.2B** (same scope + ≥ ₹8,00,000 → RFP, 5 suggestions), placed immediately after 5.2, so contract POs still win and emergency/spot do not.
+  - The batch was **reprocessed with the default requirement-date semantics** (each requirement under the policy in force on its date, 2.3). Because the amendment is effective mid-batch, requirement groups whose first line was created before 1 Dec remain on v5.0, and those from 1 Dec use v5.1; the export's `policy_version` records this (90 lines on 5.0, 98 on 5.1, 2 not processed). This is the correct reading of an effective-dated version; no “apply latest to everything” override was used for the submitted run.
+  - Result: **19 decision changes** (15 spot→RFQ: packaging ≥ ₹1L and CHK1 electrical ≥ ₹50k; 4 RFQ→RFP at ≥ ₹8L); every v5.0 line is identical to Run 1; 82 POs. Export: `submission/krishjaiswal__run2.csv`.
+- **Preferred lists** as of 2026-12-01 exported top 3 per item: `submission/krishjaiswal__preferred.csv` (155 rows, 68 items with a non-empty list).
+- No application code was changed after the build deadline; this note and the three CSVs are the only changes in this commit. Rules that are explicit in the policy are implemented literally; this file only covers the gaps.
 
 Read alongside `docs/superpowers/specs/2026-11-18-corvo-pr-to-po-design.md` and the policy v5.0.
 
